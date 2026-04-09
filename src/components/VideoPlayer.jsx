@@ -14,6 +14,7 @@ export default function VideoPlayer({ streamUrl, tracks }) {
     setTimeout(() => setIsSwitching(false), 800);
   };
 
+  // 1. Handle Video Streaming (HLS or Native)
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !streamUrl) return;
@@ -23,7 +24,6 @@ export default function VideoPlayer({ streamUrl, tracks }) {
     }
 
     const currentProxy = M3U8_PROXIES[proxyIndex];
-    // If currentProxy is an empty string, do a direct connection. Otherwise, append proxy query.
     const finalUrl = currentProxy 
       ? `${currentProxy}${encodeURIComponent(streamUrl)}&t=${Date.now()}` 
       : streamUrl;
@@ -46,7 +46,6 @@ export default function VideoPlayer({ streamUrl, tracks }) {
         }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native Safari fallback
       video.src = finalUrl;
       video.addEventListener('loadedmetadata', () => video.play());
     }
@@ -55,6 +54,43 @@ export default function VideoPlayer({ streamUrl, tracks }) {
       if (hlsRef.current) hlsRef.current.destroy();
     };
   }, [streamUrl, proxyIndex]);
+
+  // 2. Force Subtitles to Show
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !tracks || tracks.length === 0) return;
+
+    const forceSubtitles = () => {
+      const textTracks = video.textTracks;
+      if (!textTracks) return;
+
+      for (let i = 0; i < textTracks.length; i++) {
+        const track = textTracks[i];
+        const label = (track.label || '').toLowerCase();
+        const lang = (track.language || '').toLowerCase();
+        
+        // Match English tracks
+        if (label.includes('english') || label.includes('eng') || lang === 'en') {
+          track.mode = 'showing';
+        } else {
+          track.mode = 'hidden'; // Hide other languages to prevent overlap
+        }
+      }
+    };
+
+    // Attach to multiple lifecycle events to bypass browser loading quirks
+    video.addEventListener('loadedmetadata', forceSubtitles);
+    video.addEventListener('canplay', forceSubtitles);
+    
+    // Fallback timeout for React rendering delays
+    const timeout = setTimeout(forceSubtitles, 500);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', forceSubtitles);
+      video.removeEventListener('canplay', forceSubtitles);
+      clearTimeout(timeout);
+    };
+  }, [streamUrl, tracks]);
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -68,18 +104,22 @@ export default function VideoPlayer({ streamUrl, tracks }) {
     <div className="w-full">
       <div className="relative bg-black rounded-xl overflow-hidden shadow-2xl group">
         <video ref={videoRef} controls crossOrigin="anonymous" className="w-full aspect-video" playsInline>
-          {tracks?.map((track, idx) => (
-            track.kind !== 'thumbnails' && track.file && (
+          {tracks?.map((track, idx) => {
+            // Support both API structures (file vs url)
+            const trackUrl = track.file || track.url;
+            if (track.kind === 'thumbnails' || !trackUrl) return null;
+
+            return (
               <track
-                key={idx}
+                key={`${trackUrl}-${idx}`}
                 kind={track.kind || 'captions'}
                 label={track.label || 'English'}
                 srcLang={track.label?.substring(0, 2).toLowerCase() || 'en'}
-                src={track.file}
+                src={trackUrl}
                 default={track.default || track.label?.toLowerCase().includes('english')}
               />
-            )
-          ))}
+            );
+          })}
         </video>
       </div>
       <div className="mt-4 flex gap-4 justify-center">
@@ -89,6 +129,15 @@ export default function VideoPlayer({ streamUrl, tracks }) {
         <button 
           onClick={switchProxy} 
           disabled={isSwitching}
+          className={`px-6 py-3 rounded-2xl font-medium transition text-sm flex items-center gap-2 ${isSwitching ? 'bg-blue-600 text-white' : 'bg-zinc-800 hover:bg-zinc-700'}`}
+        >
+          <i className={`fa-solid ${isSwitching ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i> 
+          {isSwitching ? 'Switching...' : 'Switch Node'}
+        </button>
+      </div>
+    </div>
+  );
+}          disabled={isSwitching}
           className={`px-6 py-3 rounded-2xl font-medium transition text-sm flex items-center gap-2 ${isSwitching ? 'bg-blue-600 text-white' : 'bg-zinc-800 hover:bg-zinc-700'}`}
         >
           <i className={`fa-solid ${isSwitching ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i> 
