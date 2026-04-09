@@ -6,9 +6,12 @@ export default function VideoPlayer({ streamUrl, tracks }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
   const [proxyIndex, setProxyIndex] = useState(0);
+  const [isSwitching, setIsSwitching] = useState(false);
 
   const switchProxy = () => {
+    setIsSwitching(true);
     setProxyIndex(prev => (prev + 1) % M3U8_PROXIES.length);
+    setTimeout(() => setIsSwitching(false), 800);
   };
 
   useEffect(() => {
@@ -19,25 +22,32 @@ export default function VideoPlayer({ streamUrl, tracks }) {
       hlsRef.current.destroy();
     }
 
+    const currentProxy = M3U8_PROXIES[proxyIndex];
+    // If currentProxy is an empty string, do a direct connection. Otherwise, append proxy query.
+    const finalUrl = currentProxy 
+      ? `${currentProxy}${encodeURIComponent(streamUrl)}&t=${Date.now()}` 
+      : streamUrl;
+
     if (Hls.isSupported()) {
-      const hls = new Hls({ manifestLoadingMaxRetry: 8, levelLoadingMaxRetry: 5 });
+      const hls = new Hls({ manifestLoadingMaxRetry: 5, levelLoadingMaxRetry: 5 });
       hlsRef.current = hls;
 
-      const proxyUrl = `${M3U8_PROXIES[proxyIndex]}${encodeURIComponent(streamUrl)}&t=${Date.now()}`;
-      hls.loadSource(proxyUrl);
+      hls.loadSource(finalUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play().catch(e => console.log("Auto-play prevented:", e));
+        video.play().catch(e => console.log("Auto-play prevented by browser policy:", e));
       });
 
       hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal && (data.details === 'manifestLoadError' || data.type === Hls.ErrorTypes.NETWORK_ERROR)) {
+          console.warn("HLS Error encountered, attempting to switch node...");
           switchProxy();
         }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = `${M3U8_PROXIES[proxyIndex]}${encodeURIComponent(streamUrl)}`;
+      // Native Safari fallback
+      video.src = finalUrl;
       video.addEventListener('loadedmetadata', () => video.play());
     }
 
@@ -76,8 +86,13 @@ export default function VideoPlayer({ streamUrl, tracks }) {
         <button onClick={toggleFullScreen} className="bg-zinc-800 hover:bg-zinc-700 px-6 py-3 rounded-2xl font-medium transition text-sm flex items-center gap-2">
           <i className="fa-solid fa-expand"></i> Full Screen
         </button>
-        <button onClick={switchProxy} className="bg-zinc-800 hover:bg-zinc-700 px-6 py-3 rounded-2xl font-medium transition text-sm flex items-center gap-2">
-          <i className="fa-solid fa-rotate"></i> Switch Node
+        <button 
+          onClick={switchProxy} 
+          disabled={isSwitching}
+          className={`px-6 py-3 rounded-2xl font-medium transition text-sm flex items-center gap-2 ${isSwitching ? 'bg-blue-600 text-white' : 'bg-zinc-800 hover:bg-zinc-700'}`}
+        >
+          <i className={`fa-solid ${isSwitching ? 'fa-spinner fa-spin' : 'fa-rotate'}`}></i> 
+          {isSwitching ? 'Switching...' : 'Switch Node'}
         </button>
       </div>
     </div>
