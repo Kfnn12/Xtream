@@ -66,6 +66,6 @@ export default function App() {
             episodeId={currentEpisodeId} 
             onBack={() => navigateTo('details')} 
             onAnimeSelect={handleAnimeSelect}
-            onWatch={handleWatch} /* <-- ADD THIS LINE */
+            onWatch={handleWatch} /
           />
         )}
