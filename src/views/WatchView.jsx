@@ -13,17 +13,40 @@ export default function WatchView({ anime, episodeId, onBack, onAnimeSelect }) {
   useEffect(() => {
     async function loadStream() {
       setLoading(true);
-      try {
-        const raw = await fetchFromApi(`/api/kaido/watch/${encodeURIComponent(episodeId)}`);
-        setStreamData({
-          url: raw.data?.sources?.[0]?.url || raw.sources?.[0]?.url || raw.url,
-          tracks: raw.data?.subtitles || raw.data?.tracks || raw.subtitles || []
-        });
-      } catch (err) {
-        console.error("Stream failed", err);
+      let foundUrl = null;
+      let foundTracks = [];
+
+      const idString = String(episodeId);
+      const separator = idString.includes('?') ? '&' : '?';
+      const encodedId = encodeURIComponent(idString);
+
+      // Array of endpoints to try in case the primary API is down or changed
+      const possibleEndpoints = [
+        `/api/kaido/watch/${encodedId}`,
+        `/api/kaido/episode/sources?animeEpisodeId=${encodedId}&category=sub`,
+        `/api/kaido/sources/${idString}${separator}version=sub&server=vidcloud`,
+        `/api/kaido/watch?episodeId=${encodedId}`
+      ];
+
+      for (const endpoint of possibleEndpoints) {
+        try {
+          const raw = await fetchFromApi(endpoint);
+          const url = raw.data?.sources?.[0]?.url || raw.sources?.[0]?.url || raw.url;
+          
+          if (url) {
+            foundUrl = url;
+            foundTracks = raw.data?.subtitles || raw.data?.tracks || raw.subtitles || raw.tracks || [];
+            break; // Stop looking once we find a valid stream URL
+          }
+        } catch (err) {
+          console.warn(`Fallback: Endpoint ${endpoint} failed, trying next...`);
+        }
       }
+
+      setStreamData({ url: foundUrl, tracks: foundTracks });
       setLoading(false);
     }
+    
     loadStream();
   }, [episodeId]);
 
@@ -51,7 +74,7 @@ export default function WatchView({ anime, episodeId, onBack, onAnimeSelect }) {
           <VideoPlayer streamUrl={streamData.url} tracks={streamData.tracks} />
         ) : (
           <div className="w-full aspect-video bg-zinc-900 rounded-xl flex items-center justify-center text-red-400 border border-red-900 shadow-2xl">
-            Stream not available. Please try another episode or server.
+            Stream not available. The server may be down or the episode ID is invalid.
           </div>
         )}
       </div>
