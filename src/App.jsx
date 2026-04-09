@@ -59,13 +59,17 @@ export default function App() {
           />
         )}
         
-        {/* Update this specific block in App.jsx */}
         {view === 'watch' && selectedAnime && currentEpisodeId && (
           <WatchView 
             anime={selectedAnime} 
             episodeId={currentEpisodeId} 
             onBack={() => navigateTo('details')} 
             onAnimeSelect={handleAnimeSelect}
-            onWatch={handleWatch} /
           />
         )}
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
